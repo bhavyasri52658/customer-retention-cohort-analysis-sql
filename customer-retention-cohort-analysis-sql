@@ -1,0 +1,319 @@
+-- SECTION 1: DROP EXISTING TABLES
+DROP TABLE IF EXISTS cohort_orders;
+DROP TABLE IF EXISTS cohort_customers;
+
+-- SECTION 2: CREATE CUSTOMERS TABLE
+CREATE TABLE cohort_customers (
+    customer_id INT PRIMARY KEY,
+    customer_name VARCHAR(50) NOT NULL,
+    city VARCHAR(50),
+    signup_date DATE
+);
+
+-- SECTION 3: CREATE ORDERS TABLE
+CREATE TABLE cohort_orders (
+    order_id INT PRIMARY KEY,
+    customer_id INT REFERENCES cohort_customers(customer_id),
+    order_date DATE NOT NULL,
+    order_amount NUMERIC(10,2) NOT NULL,
+    order_status VARCHAR(20) NOT NULL
+        CHECK (order_status IN ('Completed', 'Cancelled'))
+);
+
+-- SECTION 4: INSERT CUSTOMER DATA
+INSERT INTO cohort_customers
+    (customer_id, customer_name, city, signup_date)
+VALUES
+(1, 'Ananya', 'Hyderabad', '2026-01-05'),
+(2, 'Rahul', 'Bengaluru', '2026-01-12'),
+(3, 'Priya', 'Chennai', '2026-01-20'),
+(4, 'Arjun', 'Hyderabad', '2026-02-03'),
+(5, 'Sneha', 'Mumbai', '2026-02-10'),
+(6, 'Kiran', 'Pune', '2026-02-18'),
+(7, 'Divya', 'Chennai', '2026-03-02'),
+(8, 'Vikram', 'Bengaluru', '2026-03-08'),
+(9, 'Meera', 'Hyderabad', '2026-03-15'),
+(10, 'Rohit', 'Mumbai', '2026-03-22');
+
+-- SECTION 5: INSERT ORDER DATA
+INSERT INTO cohort_orders
+    (order_id, customer_id, order_date, order_amount, order_status)
+VALUES
+(101, 1, '2026-01-08', 2500, 'Completed'),
+(102, 1, '2026-02-10', 1800, 'Completed'),
+(103, 1, '2026-03-12', 3200, 'Completed'),
+(104, 2, '2026-01-15', 1500, 'Completed'),
+(105, 2, '2026-03-05', 2200, 'Completed'),
+(106, 3, '2026-01-25', 3000, 'Completed'),
+(107, 3, '2026-02-15', 1200, 'Cancelled'),
+(108, 4, '2026-02-05', 4000, 'Completed'),
+(109, 4, '2026-03-10', 2500, 'Completed'),
+(110, 5, '2026-02-12', 1800, 'Completed'),
+(111, 5, '2026-03-18', 2100, 'Completed'),
+(112, 6, '2026-02-20', 3500, 'Completed'),
+(113, 7, '2026-03-05', 1600, 'Completed'),
+(114, 7, '2026-04-02', 2400, 'Completed'),
+(115, 8, '2026-03-10', 2800, 'Completed'),
+(116, 8, '2026-04-12', 1900, 'Completed'),
+(117, 9, '2026-03-18', 4200, 'Completed'),
+(118, 9, '2026-04-15', 2600, 'Completed'),
+(119, 10, '2026-03-25', 1300, 'Completed'),
+(120, 10, '2026-04-20', 1700, 'Completed');
+
+-- SECTION 6: VIEW ALL CUSTOMERS
+SELECT *
+FROM cohort_customers
+ORDER BY customer_id;
+
+-- SECTION 7: VIEW ALL ORDERS
+SELECT *
+FROM cohort_orders
+ORDER BY order_date, order_id;
+
+-- SECTION 8: TOTAL NUMBER OF CUSTOMERS
+SELECT COUNT(*) AS total_customers
+FROM cohort_customers;
+
+-- SECTION 9: ORDER STATUS SUMMARY
+SELECT
+    order_status,
+    COUNT(*) AS order_count
+FROM cohort_orders
+GROUP BY order_status
+ORDER BY order_status;
+
+-- SECTION 10: TOTAL COMPLETED REVENUE
+SELECT
+    SUM(order_amount) AS completed_revenue
+FROM cohort_orders
+WHERE order_status = 'Completed';
+
+-- SECTION 11: AVERAGE COMPLETED ORDER VALUE
+SELECT
+    ROUND(AVG(order_amount), 2) AS average_order_value
+FROM cohort_orders
+WHERE order_status = 'Completed';
+
+-- SECTION 12: ORDER CANCELLATION RATE
+SELECT
+    COUNT(*) FILTER (
+        WHERE order_status = 'Cancelled'
+    ) AS cancelled_orders,
+    COUNT(*) AS total_orders,
+    ROUND(
+        100.0 * COUNT(*) FILTER (
+            WHERE order_status = 'Cancelled'
+        ) / NULLIF(COUNT(*), 0),
+        2
+    ) AS cancellation_rate_pct
+FROM cohort_orders;
+
+-- SECTION 13: CUSTOMER SPENDING AND COMPLETED ORDERS
+SELECT
+    c.customer_name,
+    COUNT(o.order_id) AS completed_orders,
+    COALESCE(SUM(o.order_amount), 0) AS total_spent
+FROM cohort_customers c
+LEFT JOIN cohort_orders o
+    ON c.customer_id = o.customer_id
+   AND o.order_status = 'Completed'
+GROUP BY c.customer_id, c.customer_name
+ORDER BY total_spent DESC;
+
+-- SECTION 14: IDENTIFY REPEAT CUSTOMERS
+SELECT
+    c.customer_name,
+    COUNT(o.order_id) AS completed_orders
+FROM cohort_customers c
+JOIN cohort_orders o
+    ON c.customer_id = o.customer_id
+WHERE o.order_status = 'Completed'
+GROUP BY c.customer_id, c.customer_name
+HAVING COUNT(o.order_id) > 1
+ORDER BY completed_orders DESC, c.customer_name;
+
+-- SECTION 15: REPEAT-CUSTOMER RATE
+WITH customer_counts AS (
+    SELECT
+        c.customer_id,
+        COUNT(o.order_id) AS completed_orders
+    FROM cohort_customers c
+    LEFT JOIN cohort_orders o
+        ON c.customer_id = o.customer_id
+       AND o.order_status = 'Completed'
+    GROUP BY c.customer_id
+)
+SELECT
+    COUNT(*) FILTER (
+        WHERE completed_orders > 1
+    ) AS repeat_customers,
+    COUNT(*) AS total_customers,
+    ROUND(
+        100.0 * COUNT(*) FILTER (
+            WHERE completed_orders > 1
+        ) / NULLIF(COUNT(*), 0),
+        2
+    ) AS repeat_customer_rate_pct
+FROM customer_counts;
+
+-- SECTION 16: MONTHLY COMPLETED REVENUE
+SELECT
+    DATE_TRUNC('month', order_date)::DATE AS order_month,
+    SUM(order_amount) AS monthly_revenue
+FROM cohort_orders
+WHERE order_status = 'Completed'
+GROUP BY DATE_TRUNC('month', order_date)
+ORDER BY order_month;
+
+-- SECTION 17: MONTHLY ACTIVE CUSTOMERS
+SELECT
+    DATE_TRUNC('month', order_date)::DATE AS order_month,
+    COUNT(DISTINCT customer_id) AS active_customers
+FROM cohort_orders
+WHERE order_status = 'Completed'
+GROUP BY DATE_TRUNC('month', order_date)
+ORDER BY order_month;
+
+-- SECTION 18: FIRST COMPLETED PURCHASE PER CUSTOMER
+SELECT
+    c.customer_name,
+    MIN(o.order_date) AS first_purchase_date
+FROM cohort_customers c
+LEFT JOIN cohort_orders o
+    ON c.customer_id = o.customer_id
+   AND o.order_status = 'Completed'
+GROUP BY c.customer_id, c.customer_name
+ORDER BY first_purchase_date NULLS LAST;
+
+-- SECTION 19: CUSTOMER COHORT SIZES
+-- Cohort = month of first completed purchase
+WITH first_purchase AS (
+    SELECT
+        customer_id,
+        DATE_TRUNC('month', MIN(order_date))::DATE AS cohort_month
+    FROM cohort_orders
+    WHERE order_status = 'Completed'
+    GROUP BY customer_id
+)
+SELECT
+    cohort_month,
+    COUNT(*) AS customers_in_cohort
+FROM first_purchase
+GROUP BY cohort_month
+ORDER BY cohort_month;
+
+-- SECTION 20: MONTHLY COHORT RETENTION
+WITH first_purchase AS (
+    SELECT
+        customer_id,
+        DATE_TRUNC('month', MIN(order_date))::DATE AS cohort_month
+    FROM cohort_orders
+    WHERE order_status = 'Completed'
+    GROUP BY customer_id
+),
+customer_activity AS (
+    SELECT DISTINCT
+        customer_id,
+        DATE_TRUNC('month', order_date)::DATE AS activity_month
+    FROM cohort_orders
+    WHERE order_status = 'Completed'
+),
+cohort_activity AS (
+    SELECT
+        f.cohort_month,
+        a.activity_month,
+        (
+            (EXTRACT(YEAR FROM a.activity_month)
+             - EXTRACT(YEAR FROM f.cohort_month)) * 12
+            + EXTRACT(MONTH FROM a.activity_month)
+            - EXTRACT(MONTH FROM f.cohort_month)
+        )::INT AS months_since_first_purchase,
+        a.customer_id
+    FROM first_purchase f
+    JOIN customer_activity a
+        ON f.customer_id = a.customer_id
+)
+SELECT
+    cohort_month,
+    months_since_first_purchase,
+    COUNT(DISTINCT customer_id) AS retained_customers
+FROM cohort_activity
+GROUP BY cohort_month, months_since_first_purchase
+ORDER BY cohort_month, months_since_first_purchase;
+
+-- SECTION 21: HISTORICAL CUSTOMER LIFETIME REVENUE
+SELECT
+    c.customer_name,
+    COUNT(o.order_id) AS completed_orders,
+    COALESCE(SUM(o.order_amount), 0) AS lifetime_revenue
+FROM cohort_customers c
+LEFT JOIN cohort_orders o
+    ON c.customer_id = o.customer_id
+   AND o.order_status = 'Completed'
+GROUP BY c.customer_id, c.customer_name
+ORDER BY lifetime_revenue DESC;
+
+-- SECTION 22: CUSTOMERS WITH NO COMPLETED ORDERS
+SELECT
+    c.customer_id,
+    c.customer_name
+FROM cohort_customers c
+LEFT JOIN cohort_orders o
+    ON c.customer_id = o.customer_id
+   AND o.order_status = 'Completed'
+WHERE o.order_id IS NULL;
+
+-- SECTION 23: CUSTOMERS WHOSE LAST PURCHASE WAS BEFORE APRIL
+-- This uses a fixed example cutoff date.
+WITH last_purchase AS (
+    SELECT
+        c.customer_id,
+        c.customer_name,
+        MAX(o.order_date) AS last_purchase_date
+    FROM cohort_customers c
+    LEFT JOIN cohort_orders o
+        ON c.customer_id = o.customer_id
+       AND o.order_status = 'Completed'
+    GROUP BY c.customer_id, c.customer_name
+)
+SELECT *
+FROM last_purchase
+WHERE last_purchase_date < DATE '2026-04-01'
+   OR last_purchase_date IS NULL
+ORDER BY last_purchase_date NULLS FIRST;
+
+-- SECTION 24: RANK CUSTOMERS BY COMPLETED REVENUE
+WITH customer_revenue AS (
+    SELECT
+        c.customer_id,
+        c.customer_name,
+        COALESCE(SUM(o.order_amount), 0) AS total_spent
+    FROM cohort_customers c
+    LEFT JOIN cohort_orders o
+        ON c.customer_id = o.customer_id
+       AND o.order_status = 'Completed'
+    GROUP BY c.customer_id, c.customer_name
+)
+SELECT
+    customer_name,
+    total_spent,
+    DENSE_RANK() OVER (
+        ORDER BY total_spent DESC
+    ) AS revenue_rank
+FROM customer_revenue
+ORDER BY revenue_rank, customer_name;
+
+-- SECTION 25: COMPLETED VS CANCELLED ORDERS BY MONTH
+SELECT
+    DATE_TRUNC('month', order_date)::DATE AS order_month,
+    COUNT(*) FILTER (
+        WHERE order_status = 'Completed'
+    ) AS completed_orders,
+    COUNT(*) FILTER (
+        WHERE order_status = 'Cancelled'
+    ) AS cancelled_orders
+FROM cohort_orders
+GROUP BY DATE_TRUNC('month', order_date)
+ORDER BY order_month;
+
+-- END OF PROJECT 6
